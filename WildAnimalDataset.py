@@ -28,4 +28,4 @@ class WildAnimalDataset(Dataset):
         img_name = os.path.join(self.photo_path, self.meta.Name[idx])
         image = Image.open(img_name)
         image_transformed = self.transform(image)
-        return image_transformed
+        return [image_transformed, np.array(image)]
