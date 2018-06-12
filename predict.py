@@ -85,7 +85,7 @@ def create_single_model_confusion(model, n_total_categories, dataloader, use_gpu
     return confusion
 
     
-def write_pred(args, model, dataloader, use_gpu):
+def write_pred(args, model, dataloader, use_gpu, class_names):
     meta = pd.io.excel.read_excel(args.meta_path)
     
     pred_settled = pd.DataFrame(columns = list(meta.columns.values) + ['pred'])
@@ -95,7 +95,7 @@ def write_pred(args, model, dataloader, use_gpu):
     
     model.train(False) 
     
-    for inputs in tqdm(dataloader):
+    for inputs, _ in tqdm(dataloader):
         if use_gpu:
             inputs = Variable(inputs.cuda())
         else:
@@ -108,7 +108,7 @@ def write_pred(args, model, dataloader, use_gpu):
 
         for i in range(preds.shape[0]):
             curr = meta.loc[settled + unsettled]
-            curr['pred'] = preds[i,-1]
+            curr['pred'] = class_names[preds[i,-1]]
 
             conf = outputs[i, preds[i,-1]]           
             if conf > args.threshold:
@@ -135,7 +135,7 @@ def main():
     dataloader = obtain_inputs_parameters(args)
     model = read_trained_single_model(args, use_gpu, n_total_categories)
     
-    write_pred(args, model, dataloader, use_gpu)
+    write_pred(args, model, dataloader, use_gpu, class_names)
 
 if __name__ == "__main__":
     main()

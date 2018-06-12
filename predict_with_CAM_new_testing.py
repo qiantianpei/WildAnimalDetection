@@ -6,6 +6,8 @@
 from __future__ import print_function, division
 import argparse
 import io
+import os
+import fnmatch
 import requests
 from PIL import Image
 import cv2
@@ -31,6 +33,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=16, help='training batch size')
 parser.add_argument('--photo_path', type=str, default='/data/cs341-bucket/camera_B2', help='photo path')
+# parser.add_argument('--photo_path', type=str, default='/test_data', help='photo path')
 parser.add_argument('--meta_path', type=str, default='/data/cs341-bucket/camera_B2/camera_B2.xlsx', help='metadata path')
 parser.add_argument('--output_path', type=str, default='unsettled/', help='unsettled output path')
 
@@ -39,10 +42,10 @@ parser.add_argument('--output_path', type=str, default='unsettled/', help='unset
 parser.add_argument('--threshold', type=float, default=0, help='threshold for settling prediction')
 
 
-def obtain_inputs_parameters(args):
+def obtain_inputs_parameters(args, meta_path, photo_path):
 
-    meta_path = args.meta_path
-    photo_path = args.photo_path
+#     meta_path = args.meta_path
+#     photo_path = args.photo_path
 
     data_transform = transforms.Compose([
         transforms.Resize((224,224)),
@@ -113,8 +116,8 @@ def returnCAM(feature_conv, weight_softmax, class_idx):
         output_cam.append(cv2.resize(cam_img, size_upsample))
     return output_cam
 
-def write_pred(args, model, dataloader, use_gpu, class_names):
-    meta = pd.io.excel.read_excel(args.meta_path)
+def write_pred(args, meta_path, folder, model, dataloader, use_gpu, class_names):
+    meta = pd.io.excel.read_excel(meta_path)
     
     pred_settled = pd.DataFrame(columns = list(meta.columns.values) + ['pred'])
     pred_unsettled = pd.DataFrame(columns = list(meta.columns.values) + ['pred'])
@@ -150,7 +153,7 @@ def write_pred(args, model, dataloader, use_gpu, class_names):
 
         for i in range(preds.shape[0]):
             curr = meta.loc[settled + unsettled]
-            curr['pred'] = preds[i,-1]
+            curr['pred'] = class_names[preds[i,-1]]
 
             conf = outputs[i, preds[i,-1]]           
             if conf > args.threshold:
@@ -185,8 +188,11 @@ def write_pred(args, model, dataloader, use_gpu, class_names):
                 comb_img[0:result.shape[0], photo.shape[1]:total_width] = result
                 
                 #### change later based on file dir ####
-                cam = args.meta_path.split('/')[-2]
                 out_path = args.output_path + cam + '_' + str(unsettled) + '.jpg'
+                
+                ### add file name to excel
+                pred_unsettled.loc[unsettled]['file_name'] = out_path
+                
                 cv2.imwrite(out_path, comb_img)
 
     pred_settled.to_csv('settled.csv', index = False)
@@ -203,10 +209,20 @@ def main():
                    "Gray Fox", "Virginia Opossum", "Stellers jay", "Western Gray Squirrel", 
                    "Dusky-footed Woodrat", "Great blue heron", "Fox Squirrel", "California Ground Squirrel"]
     
-    dataloader = obtain_inputs_parameters(args)
     model = read_trained_single_model(args, use_gpu, n_total_categories)
     
-    write_pred(args, model, dataloader, use_gpu, class_names)
+    # get all related folders
+    keep = []
+    for file in os.listdir(args.photo_path + '/'):
+        if fnmatch.fnmatch(file, 'camera*'):
+            keep.append(file)
+    
+    # photo path: directory above all camera folders
+    for folder in keep:
+        meta_path = args.photo_path + '/metadata/' + folder + '.xlsx'
+        photo_path = args.photo_path + '/' + folder
+        dataloader = obtain_inputs_parameters(args, meta_path, photo_path)    
+        write_pred(args, meta_path, folder, model, dataloader, use_gpu, class_names)
 
 if __name__ == "__main__":
     main()
